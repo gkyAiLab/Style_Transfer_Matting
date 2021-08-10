@@ -12,6 +12,8 @@ Example:
 python demo_webcam.py --model-checkpoint "PATH_TO_CHECKPOINT" --resolution 1280 720 --hide-fps
 python demo_webcam.py --model-checkpoint "./torchscript_resnet50_fp32.pth"  --resolution 1280 720 --hide-fps --source_device_id 1
 """
+import sys
+sys.path.append('./matting')
 
 import argparse
 import os
@@ -22,7 +24,7 @@ from threading import Thread, Lock
 
 import cv2
 import numpy as np
-import pyfakewebcam  # pip install pyfakewebcam
+# import pyfakewebcam  # pip install pyfakewebcam
 import torch
 from PIL import Image
 from torch import nn
@@ -30,12 +32,11 @@ from torch.jit import ScriptModule
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import Compose, ToTensor, Resize
 from torchvision.transforms.functional import to_pil_image
-from tqdm import tqdm
+# from tqdm import tqdm
 import utils
 import transformer
-STYLE_TRANSFORM_PATH = "./transforms/mosaic.pth"
-PRESERVE_COLOR = False
-# PRESERVE_COLOR = True
+STYLE_TRANSFORM_PATH = "./matting/transforms/mosaic.pth"
+
 
 # --------------- App setup ---------------
 app = {
@@ -516,22 +517,23 @@ def cv2_frame_to_cuda(frame):
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     return ToTensor()(Image.fromarray(frame)).unsqueeze_(0).cuda()
 
-def grab_bgr():
-    bgr_frame = cam.read()
-    bgr_blur = cv2.GaussianBlur(bgr_frame.astype('float32'), (67, 67), 0).astype('uint8') # cv2.blur(bgr_frame, (10, 10))
+def grab_bgr(image):
+    bgr_frame = image
+    # bgr_blur = cv2.GaussianBlur(bgr_frame.astype('float32'), (67, 67), 0).astype('uint8') # cv2.blur(bgr_frame, (10, 10))
     app["bgr"] = cv2_frame_to_cuda(bgr_frame)
-    app["bgr_blur"] = cv2_frame_to_cuda(bgr_blur)
+    # app["bgr_blur"] = cv2_frame_to_cuda(bgr_blur)
 
-def style_bgr():
+def style_bgr(image,stat):
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     # Load Transformer Network
     print("Loading Transformer Network")
     net = transformer.TransformerNetwork()
+    STYLE_TRANSFORM_PATH=stat
     net.load_state_dict(torch.load(STYLE_TRANSFORM_PATH))
     net = net.to(device)
     # Get webcam input
-    bgr_frame = cam.read()
-    app["bgr"] = cv2_frame_to_cuda(bgr_frame)
+    bgr_frame = image
+    # app["bgr"] = cv2_frame_to_cuda(bgr_frame)
  # Main loop
     with torch.no_grad():
         # while True:
@@ -543,13 +545,15 @@ def style_bgr():
             content_tensor = utils.itot(bgr_frame).to(device)
             generated_tensor = net(content_tensor)
             generated_image = utils.ttoi(generated_tensor.detach())
-            if (PRESERVE_COLOR):
-                generated_image = utils.transfer_color(bgr_frame, generated_image)
+            # if (PRESERVE_COLOR):
+            #     generated_image = utils.transfer_color(bgr_frame, generated_image)
 
             # generated_image = generated_image / 255
             app["bgr_blur"] = cv2_frame_to_cuda(generated_image.astype('uint8'))
             # if cv2.waitKey(1) == 27: 
             #     break  # esc to quit
+            print("return")
+            return cv2_frame_to_cuda(generated_image.astype('uint8'))
 
 def app_step():
     if app["mode"] == "background":
@@ -578,17 +582,112 @@ def app_step():
         res = res.mul(255).byte().cpu().permute(0, 2, 3, 1).numpy()[0]
         res = cv2.cvtColor(res, cv2.COLOR_RGB2BGR)
 
-        key = dsp.step(res)
+        return res
+        
+        # key = dsp.step(res)
 
-        if key == ord('q'):
-            return True
+        # if key == ord('q'):
+        #     return True
+def matting_step1(image):
+    app["bgr"] = cv2_frame_to_cuda(image)
+    return image
+
+def matting_step(image,input,style_type=None,stat=None):
+        print("many matting model")
+        frame=image
+        src = cv2_frame_to_cuda(frame)
+        # app["bgr"] = cv2_frame_to_cuda(frame)
+        # grab_bgr(frame)
+        
+        args = load_args()
+        bgmModel = BGModel(args.model_checkpoint, args.model_backbone_scale, args.model_refine_mode,
+                       args.model_refine_sample_pixels, args.model_refine_threshold)
+        bgmModel.reload()
+        pha, fgr = bgmModel.model(src, app["bgr"])[:2]
+        tgt_bgr = torch.ones_like(fgr)
+
+        if(input=="img"):
+            if(style_type==None):
+                preloaded_image = cv2_frame_to_cuda(cv2.imread(args.target_image))
+                tgt_bgr = nn.functional.interpolate(preloaded_image, (fgr.shape[2:]))
+            else:
+                ###############################################
+                if (style_type=='1'):
+                    style_transform_path='./matting/transforms/mosaic.pth'
+                elif(style_type=='2'):
+                    style_transform_path='./matting/transforms/lazy.pth'
+                elif(style_type=='3'):
+                    style_transform_path='./matting/transforms/wave.pth'
+                preloaded_image = transfer_image_style(cv2.imread(args.target_image),style_transform_path)
+                preloaded_image = preloaded_image / 255
+                # cv2.imshow("imshow",preloaded_image)
+                preloaded_image = cv2.cvtColor(preloaded_image, cv2.COLOR_BGR2RGB) 
+                preloaded_image=ToTensor()(preloaded_image).unsqueeze_(0).cuda()              
+                tgt_bgr = nn.functional.interpolate(preloaded_image, (fgr.shape[2:]))
+
+        if(input=="video"):
+            if(style_type==None):
+                tb_video = VideoDataset(args.target_video, transforms=ToTensor())
+                vidframe = tb_video[app["target_background_frame"]].unsqueeze_(0).cuda()
+                tgt_bgr = nn.functional.interpolate(vidframe, (fgr.shape[2:]))
+                app["target_background_frame"] += 1
+                if app["target_background_frame"] >= tb_video.__len__():
+                    app["target_background_frame"] = 0
+            else:
+                if (style_type=='1'):
+                    style_transform_path='./matting/transforms/mosaic.pth'
+                elif(style_type=='2'):
+                    style_transform_path='./matting/transforms/lazy.pth'
+                elif(style_type=='3'):
+                    style_transform_path='./matting/transforms/wave.pth'
+
+                tb_video = VideoDataset(args.target_video)
+                vidframe = tb_video[app["target_background_frame"]]
+                preloaded_image = transfer_image_style(vidframe,style_transform_path)
+                preloaded_image = preloaded_image / 255
+                vidframe = cv2.cvtColor(preloaded_image, cv2.COLOR_BGR2RGB)
+                vidframe=ToTensor()(vidframe).unsqueeze_(0).cuda() 
+
+                tgt_bgr = nn.functional.interpolate(vidframe, (fgr.shape[2:]))
+                # cv2.imshow("imshow",tgt_bgr)
+
+                app["target_background_frame"] += 1
+                if app["target_background_frame"] >= tb_video.__len__():
+                    app["target_background_frame"] = 0
+
+        if(input=="style"):
+            tgt_bgr=style_bgr(image,stat)
+        
+        if(input==None):
+            tgt_bgr=image
+
+        res = pha * fgr + (1 - pha) * tgt_bgr
+        res = res.mul(255).byte().cpu().permute(0, 2, 3, 1).numpy()[0]
+        # res = cv2.cvtColor(res, cv2.COLOR_RGB2BGR)
+        return res
+
+def transfer_image_style(img,style_transform_path):
+        device = ("cuda" if torch.cuda.is_available() else "cpu")
+
+        # style_transform_path='./matting/transforms/starry.pth'
+        net = transformer.TransformerNetwork()
+        net.load_state_dict(torch.load(style_transform_path))
+        net = net.to(device)
 
 
+        # Free-up unneeded cuda memory
+        torch.cuda.empty_cache()
+                
+        # Generate image
+        content_tensor = utils.itot(img).to(device)
+        generated_tensor = net(content_tensor)
+        generated_image = utils.ttoi(generated_tensor.detach())
+        return generated_image
 def load_args():
     parser = argparse.ArgumentParser(description='Virtual webcam demo')
 
     parser.add_argument('--model-backbone-scale', type=float, default=0.25)
-    parser.add_argument('--model-checkpoint', type=str, default="./torchscript_resnet50_fp32.pth")
+    parser.add_argument('--model-checkpoint', type=str, default="./matting/torchscript_resnet50_fp32.pth")
     parser.add_argument('--model-checkpoint-dir', type=str, required=False)
 
     parser.add_argument('--model-refine-mode', type=str, default='sampling',
@@ -598,10 +697,10 @@ def load_args():
 
     parser.add_argument('--hide-fps', action='store_true')
     parser.add_argument('--resolution', type=int, nargs=2, metavar=('width', 'height'), default=(1280, 720))
-    parser.add_argument('--target-video', type=str, default='./demo_video.mp4')
-    parser.add_argument('--target-image', type=str, default='./demo_image.jpg')
-    parser.add_argument('--camera-device', type=str, default='/dev/video2')
-    parser.add_argument('--source_device_id', type=int, default=0)
+    parser.add_argument('--target-video', type=str, default='./matting/demo_video.mp4')
+    parser.add_argument('--target-image', type=str, default='./matting/demo_image.jpg')
+    parser.add_argument('--camera-device', type=str, default='/dev/video0')
+    parser.add_argument('--source_device_id', type=int, default=1)
     return parser.parse_args()
 
 
@@ -625,3 +724,4 @@ if __name__ == '__main__':
         while True:
             if app_step():
                 break
+# python demo_webcam.py --model-checkpoint "./torchscript_resnet50_fp32.pth"  --resolution 1280 720 --hide-fps --source_device_id 1

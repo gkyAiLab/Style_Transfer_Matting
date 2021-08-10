@@ -4,12 +4,13 @@ from PyQt5.QtGui import (QIcon,QFont)
 
 class QrcodePage(QWidget):
 
-    def __init__(self):
+    def __init__(self,path):
         super().__init__()
 
         os.getcwd()
         # qr_path_ = os.path.join(os.getcwd(),'qrcode')
-        self.qr_path = os.path.join(os.getcwd(),'qrcode.png')
+        # self.qr_path = os.path.join(os.getcwd(),'qrcode.png')
+        self.qr_path =path
 
         self.initUI()
 
@@ -32,7 +33,7 @@ class QrcodePage(QWidget):
 
         #设置label
         self.label1 = QLabel()
-        self.label1.setFixedSize(QSize(410,410))
+        self.label1.setFixedSize(QSize(500,500))
         self.QrImage= QPixmap(self.qr_path)
         self.label1.setPixmap(self.QrImage)
 

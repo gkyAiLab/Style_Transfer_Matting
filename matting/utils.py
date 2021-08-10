@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from torchvision import transforms, datasets
+import time
 
 # Gram Matrix
 def gram(tensor):
@@ -67,9 +68,9 @@ def ttoi(tensor):
 
     # Remove the batch_size dimension
     tensor = tensor.squeeze()
+    
     #img = ttoi_t(tensor)
     img = tensor.cpu().numpy()
-    
     # Transpose from [C, H, W] -> [H, W, C]
     img = img.transpose(1, 2, 0)
     return img

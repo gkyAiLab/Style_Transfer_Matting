@@ -543,6 +543,7 @@ def style_bgr():
             content_tensor = utils.itot(bgr_frame).to(device)
             generated_tensor = net(content_tensor)
             generated_image = utils.ttoi(generated_tensor.detach())
+            generated_image=generated_image.clip(0,255).astype(np.uint8)
             if (PRESERVE_COLOR):
                 generated_image = utils.transfer_color(bgr_frame, generated_image)
 
@@ -551,6 +552,7 @@ def style_bgr():
             # if cv2.waitKey(1) == 27: 
             #     break  # esc to quit
 
+
 def app_step():
     if app["mode"] == "background":
         frame = cam.read()
@@ -558,6 +560,7 @@ def app_step():
         if key == ord('q'):
             return True
     else:
+        t=time.time()
         frame = cam.read()
         src = cv2_frame_to_cuda(frame)
         pha, fgr = bgmModel.model(src, app["bgr"])[:2]
@@ -577,7 +580,8 @@ def app_step():
         res = pha * fgr + (1 - pha) * tgt_bgr
         res = res.mul(255).byte().cpu().permute(0, 2, 3, 1).numpy()[0]
         res = cv2.cvtColor(res, cv2.COLOR_RGB2BGR)
-
+        t2=time.time()
+        print(t2-t,"*******************************")
         key = dsp.step(res)
 
         if key == ord('q'):

@@ -4,8 +4,9 @@ from PyQt5 import QtGui,QtCore,QtWidgets
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import (QIcon,QFont)
-from style_transfer_page import transformer
-from style_transfer_page import utils
+# from style_transfer_page import transformer
+from matting import transformer
+from matting import utils
 import torch
 import os
 
@@ -16,9 +17,10 @@ from PyQt5.QtCore import QTimer,QEventLoop
 from PyQt5 import *
 from PIL import Image
 
-# import torch.onnx
-# import onnxruntime
-# import onnx
+# # import onnx
+# import torch.onnx 
+# import onnxruntime 
+
 
 class ModePage(QWidget):
     switch_style1 = QtCore.pyqtSignal()  # 跳转信号
@@ -49,7 +51,7 @@ class ModePage(QWidget):
         self.setWindowTitle('风格迁移')
         logo = os.path.join('src', 'abs.png')
         logo_s1=os.path.join('src', 'city.jpg')
-        logo_s2=os.path.join('src', 'star.jpg')
+        logo_s2=os.path.join('src', 'qingming.jpg')
         logo_s3=os.path.join('src', 'fuzi.jpg')
 
         logo_b1=os.path.join('src', 'abs.png')
@@ -59,7 +61,6 @@ class ModePage(QWidget):
 
         self.label_camera = QLabel()  # 定义显示视频的Label
         self.label_camera.setFixedSize(1080, 820)  # 给显示视频的Label设置大小为641x481
-
 
         self.label_counter = QLabel()  # 定义显示倒数器的Label
         self.label_counter.setVisible(False)
@@ -125,10 +126,14 @@ class ModePage(QWidget):
     # 整体初始化
     def slot_init(self):
         self.stat='0'
-        self.path='mosaic.pth'
+        # self.path='mosaic.pth'
+        self.route="./matting/transforms/mosaic.pth"
         self.style_type=None
         self.transfer_init()
         self.open_camera()
+        # self.bgmModel_load()
+        BGModel.reload(self)
+        matting_model.preload_init(self) 
         self.timer_camera.timeout.connect(self.show_camera)  # 若定时器结束，则调用show_camera()
         self.btn_cutout.clicked.connect(self.btn_cutout_clicked)
         self.style_cb.currentIndexChanged.connect(self.switch_style)
@@ -190,51 +195,59 @@ class ModePage(QWidget):
             self.stat_mat='1'
             self.input='video'
             self.model_mat='1'
+            self.style_change=True
             
         elif self.background_cb.currentText() == '背景2':
             print('background2 clicked')
             self.stat_mat='2'
             self.input='img'
             self.model_mat='1'
+            self.style_change=True
 
         elif self.background_cb.currentText() == '背景3':
             print('background3 clicked')
             self.stat_mat='3'
             self.input='style'
             self.model_mat='1'
+            self.style_change=True
 
         elif self.background_cb.currentText() == 'no背景':
             print('nobackground clicked')
             self.stat_mat='0'
             self.model_mat='0'
+            self.style_change=True
 
     def switch_style(self):
         if self.style_cb.currentText() == '风格1':
             print('style1 clicked')
             self.stat='style1'
-            self.path='city.pth'
+            # self.path='city.pth'
             self.style_type='1'
             self.route="./matting/transforms/city.pth"
+            self.style_change=True
 
         elif self.style_cb.currentText() == '风格2':
             print('style2 clicked')
             self.stat='style2'
-            self.path='star2.pth'
+            # self.path='star2.pth'
             self.style_type='2'
-            self.route="./matting/transforms/star2.pth"
+            self.route="./matting/transforms/qingming.pth"
+            self.style_change=True
 
         elif self.style_cb.currentText() == '风格3':
             print('style3 clicked')
             self.stat='style3'
-            self.path='fuzi.pth'
+            # self.path='fuzi.pth'
             self.style_type='3'
             self.route="./matting/transforms/fuzi.pth"
+            self.style_change=True
 
         elif self.style_cb.currentText() == 'no风格':
             print('no style1 clicked')
-            self.stat_mat='10'
+            # self.stat_mat='10'
             self.style_type=None
             self.stat='0'
+            self.style_change=True
 
     # 点击抠图按钮
     def btn_cutout_clicked(self):
@@ -243,77 +256,78 @@ class ModePage(QWidget):
             self.btn_cutout.setText('开始')
             self.background_cb.setVisible(False)
             self.model_mat='0'
+
+            
+            self.transfer_init()
         else:
             self.btn_cutout.setText('byebye')
             self.background_cb.setVisible(True)
-            # self.model_mat='1'
-        
-        self.matting(self.image) #init
+
+            self.matting(self.image) #init
+            self.init_image=self.image
     
-    def mat_style(self,input,style_type,stat=None):
-        
-        # while True:
-            flag, self.image = self.cap.read()  # 从视频流中读取
+    def mat_style(self,input,style_type):
+    
+        flag, self.image = self.cap.read()  # 从视频流中读取 
+        self.image = matting_model.matting_step(self,self.image,input,style_type)  #matting
 
-            # self.image = self._get_image(self.image)  # 风格迁移转换
-
-            self.image = self.matting_choose(self.image,input,style_type,stat)  #matting 
-
-            # show = cv2.resize(self.image, (640, 480))  # 把读到的帧的大小重新设置为 640x480
-
-            # showImage = QtGui.QImage(show.data, show.shape[1], show.shape[0],
-            #                         QtGui.QImage.Format_RGB888)  # 把读取到的视频数据变成QImage形式
-
-            # self.label_camera.setPixmap(QtGui.QPixmap.fromImage(showImage))  # 往显示视频的Label里显示QImage
-            return self.image
+        return self.image
 
     def cam_init(self,image):
-        flag = self.save_image_to_buffer(image)  # save image
-        img = self.read_img_from_buffer()  # load image
-        return img
+        # flag = self.save_image_to_buffer(image)  # save image
+        # img = self.read_img_from_buffer()  # load image
+        # return img
+        image=cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        return image
 
     def matting(self,image):
-        img=matting_step1(image)
+        img=matting_model.matting_step1(self,image,style_type=self.style_type)
         # flag = self.save_image_to_buffer(img)  # save image
         # img = self.read_img_from_buffer()  # load image
         return img
     
-    def matting_choose(self,image,input,style_type,stat):
-        img=matting_step(image,input,style_type,stat)
+    # def matting_choose(self,image,input,style_type,stat):
+    #     img=matting_model.matting_step(self,image=image,input=input,style_type=style_type,stat=stat)
         
-        # norm_img=cv2.normalize(img,None,alpha=0,beta=255,norm_type=cv2.NORM_MINMAX,dtype=cv2.CV_32F)
-        # print(norm_img)
-        # norm_img.astype(np.uint8)
+    #     # norm_img=cv2.normalize(img,None,alpha=0,beta=255,norm_type=cv2.NORM_MINMAX,dtype=cv2.CV_32F)
+    #     # print(norm_img)
+    #     # norm_img.astype(np.uint8)
 
-        # flag = self.save_image_to_buffer(img)  # save image
-        # img = self.read_img_from_buffer()  # load image
-        return img
+    #     # flag = self.save_image_to_buffer(img)  # save image
+    #     # img = self.read_img_from_buffer()  # load image
+    #     return img
 
     def transfer_init(self):
         _path = os.getcwd()
-        self.buffer = os.path.join(_path, 'style_transfer_page')  # 初始化整个缓冲区
+        self.buffer = os.path.join(_path, './')  # 初始化整个缓冲区
 
         self.buffer_video_buffer = os.path.join(self.buffer, "video_buffer")  # 初始化视频帧缓冲区
         if not os.path.exists(self.buffer_video_buffer):
             os.mkdir(self.buffer_video_buffer)
 
-        self.buffer_video = os.path.join(self.buffer, "vidoe")
-        if not os.path.exists(self.buffer_video):  # 保存最终的录制的视频
-            os.mkdir(self.buffer_video)
+        # self.buffer_video = os.path.join(self.buffer, "vidoe")
+        # if not os.path.exists(self.buffer_video):  # 保存最终的录制的视频
+        #     os.mkdir(self.buffer_video)
         
-        self.transfer_models_path = os.path.join(self.buffer, 'transforms')
+        # self.transfer_models_path = os.path.join(self.buffer, 'transforms')
 
-        self.buffer_image = os.path.join(self.buffer, 'buffer')
-        self.buffer_image = os.path.join(self.buffer_image, 'tmp.png')
-    def preload_init(self):
-        # define transfer model
-        device = ("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = device
-        style_transform_path = os.path.join(self.transfer_models_path, self.path)
-        net = transformer.TransformerNetwork()
-        net.load_state_dict(torch.load(style_transform_path))
-        net = net.to(device)
-        self.net = net
+        # self.buffer_image = os.path.join(self.buffer, 'buffer')
+        # self.buffer_image = os.path.join(self.buffer_image, 'tmp.png')
+
+
+
+
+    # def preload_init(self):
+    #     # define transfer model
+    #     device = ("cuda" if torch.cuda.is_available() else "cpu")
+    #     self.device = device
+    #     # style_transform_path = os.path.join(self.transfer_models_path, self.path)
+    #     style_transform_path= self.route
+    #     net = transformer.TransformerNetwork()
+    #     net.load_state_dict(torch.load(style_transform_path))
+    #     net = net.to(device)
+    #     self.net = net
+    #     self.style_change=False
 
     def open_camera(self):
         if self.timer_camera.isActive() == False:  # 若定时器未启动
@@ -333,26 +347,30 @@ class ModePage(QWidget):
     def show_camera(self):
         flag, self.image = self.cap.read()  # 从视频流中读取
         if(self.model_mat=='0'):
+            t=time.time()
             if (self.stat=='style1' or self.stat=='style2' or self.stat=='style3'):
-                self.preload_init()
+                if(self.style_change):
+                    matting_model.preload_init(self) # style reload
+                    print("number load style!alllllllllllllllllllllll")
                 self.image = self._get_image(self.image)  # 风格迁移转换
             if(self.stat=='0'):
                 self.image = self.cam_init(self.image)
+            t2=time.time()
+            print("stylestylestylestyle",t2-t)
+            
         elif(self.model_mat=='1'):
-            # print(self.model_mat,"mode")
-            # print(self.stat,"self.stat")
+            t=time.time()
 
-            if (self.stat_mat=='10'):
-                # self.image = self.cam_init(self.image)  
-                self.image =self.mat_style(self.input,style_type= None,stat="./matting/transforms/mosaic.pth")
-            elif (self.stat_mat=='1'):
+            if (self.stat_mat=='1'):
                 self.image =self.mat_style(self.input,style_type= self.style_type)
             elif (self.stat_mat=='2'):
                 self.image =self.mat_style(self.input,style_type= self.style_type)
             elif (self.stat_mat=='3'):
-                self.image =self.mat_style(self.input,style_type= None,stat=self.route)
+                self.image =self.mat_style(self.input,style_type= None)
             # elif (self.stat=='style1' or self.stat=='style2' or self.stat=='style3'):
             #     self.image =self.mat_style(input="video",style_type= self.style_type)
+            t2=time.time()
+            print(t2-t,"##############################")
             
 
         if self.with_recording:
@@ -360,54 +378,76 @@ class ModePage(QWidget):
 
         width, height = self.label_camera.width(), self.label_camera.height()
         show = cv2.resize(self.image, (width, height))  # 把读到的帧的大小重新设置
-
         showImage = QtGui.QImage(show.data, show.shape[1], show.shape[0],
                                  QtGui.QImage.Format_RGB888)  # 把读取到的视频数据变成QImage形式
 
         self.label_camera.setPixmap(QtGui.QPixmap.fromImage(showImage))  # 往显示视频的Label里显示QImage
-    
-    def transfer_image_style(self, img):
-        # img = cv2.flip(img, 1)
 
-        # Free-up unneeded cuda memory
-        torch.cuda.empty_cache()
+
+    def bgmModel_load(self):
+        args = load_args()
+        self.bgmModel = BGModel(args.model_checkpoint, args.model_backbone_scale, args.model_refine_mode,
+                       args.model_refine_sample_pixels, args.model_refine_threshold)
+        self.bgmModel.reload()
+
+    # def transfer_image_style(self, img):
+    #     # img = cv2.flip(img, 1)
+
+    #     # Free-up unneeded cuda memory
+    #     torch.cuda.empty_cache()
                 
-        # Generate image
-        content_tensor = utils.itot(img).to(self.device)
-        generated_tensor = self.net(content_tensor)
-        generated_image = utils.ttoi(generated_tensor.detach())
-        return generated_image
+    #     # Generate image
+    #     content_tensor = utils.itot(img).to(self.device)
+
+    #     # normal
+    #     generated_tensor = self.net(content_tensor)
+       
+    #     generated_image = utils.ttoi(generated_tensor.detach())
+    #     return generated_image
         
+    #     # # onnx
+    #     # t=time.time()
+    #     # # onnx_model = onnx.load("./fast_neural_style.onnx")
+    #     # # onnx.checker.check_model(onnx_model)
 
-        # onnx_model = onnx.load("./model/fast_neural_style.onnx")
-        # onnx.checker.check_model(onnx_model)
-        # ort_session = onnxruntime.InferenceSession("./fast_neural_style.onnx")
-        # ort_inputs = {ort_session.get_inputs()[0].name: self.to_numpy(content_tensor)}
-        # ort_outs = ort_session.run(None, ort_inputs)
-        # generated_tensor = ort_outs[0]
-        #
-        # generated_tensor = generated_tensor.squeeze()
-        # generated_image = generated_tensor.transpose(1, 2, 0)
-        # return generated_image
+    #     # ort_session = onnxruntime.InferenceSession("fast_neural_style.onnx")
+    #     # ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(content_tensor, 'cuda', 0)
+        
+    #     # def to_numpy(tensor):
+    #     #     return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
+        
+    #     # ort_inputs = {ort_session.get_inputs()[0].name: ortvalue}
+    #     # ort_outs = ort_session.run(None, ort_inputs)
 
-    def save_image_to_buffer(self, image):
-        cv2.imwrite(self.buffer_image, image)
+
+    #     # # ort_session = onnxruntime.InferenceSession("./fast_neural_style.onnx")
+
+    #     # # ort_inputs = {ort_session.get_inputs()[0].name: self.to_numpy(content_tensor)}
+    #     # # ort_outs = ort_session.run(None, ort_inputs)
+    #     # generated_tensor = ort_outs[0]
+        
+    #     # generated_tensor = generated_tensor.squeeze()
+    #     # generated_image = generated_tensor.transpose(1, 2, 0)
+    #     # t2=time.time()
+    #     # print("________",t2-t,onnxruntime.get_device(),"&&&&&&&&&&&&&&&&")
+    #     # return generated_image
+
+    # def to_numpy(self,tensor):
+
+    #     return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
+
+    # def save_image_to_buffer(self, image):
+    #     cv2.imwrite(self.buffer_image, image)
     
-    def read_img_from_buffer(self):
-        image = cv2.imread(self.buffer_image)
-        img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        return img
+    # def read_img_from_buffer(self):
+    #     image = cv2.imread(self.buffer_image)
+    #     img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    #     return img
 
     def _get_image(self, image):
-        img = self.transfer_image_style(image)  # tranfer style
-        img=img.astype(np.uint8)
-        # norm_img=Image.fromarray(img,'RGB')
-        
-        norm_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        
-        
-        # flag = self.save_image_to_buffer(img)  # save image
-
+        img = matting_model.transfer_image_style(self,image)  # tranfer style
+        img=cv2.cvtColor(img, cv2.COLOR_BGR2RGB).clip(0,255)
+        norm_img=img.astype(np.uint8)
         return norm_img
         
     def recording(self, image):  # 根据下标保存视频帧
