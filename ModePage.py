@@ -1,5 +1,7 @@
+from posixpath import join
 import sys
 import cv2
+import shutil
 from PyQt5 import QtGui,QtCore,QtWidgets
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
@@ -27,6 +29,7 @@ class ModePage(QWidget):
     switch_style2 = QtCore.pyqtSignal()  # 跳转信号
     switch_style3 = QtCore.pyqtSignal()  # 跳转信号
     switch_QrcodePage = QtCore.pyqtSignal()#跳转信号
+    switch_PhotoPage = QtCore.pyqtSignal()
 
     def __init__(self,parent=None):
         super().__init__(parent)
@@ -46,7 +49,7 @@ class ModePage(QWidget):
 
     def initUI(self):
         #设置窗口参数
-        self.resize(1200,900)
+        self.resize(1500,1000)
         self.center()
         self.setWindowTitle('风格迁移')
         logo = os.path.join('src', 'abs.png')
@@ -60,11 +63,11 @@ class ModePage(QWidget):
         self.setWindowIcon(QIcon(logo))
 
         self.label_camera = QLabel()  # 定义显示视频的Label
-        self.label_camera.setFixedSize(1080, 820)  # 给显示视频的Label设置大小为641x481
+        self.label_camera.setFixedSize(1280, 720)  # 给显示视频的Label设置大小为641x481
 
         self.label_counter = QLabel()  # 定义显示倒数器的Label
         self.label_counter.setVisible(False)
-        self.label_counter.setFixedSize(1080,820)
+        self.label_counter.setFixedSize(1280,720)
         self.label_counter.setText("3")
         self.label_counter.setAlignment(QtCore.Qt.AlignCenter)
         self.label_counter.setStyleSheet("font-size: 102px;")
@@ -86,16 +89,21 @@ class ModePage(QWidget):
         self.background_cb.addItem(QIcon(logo_b2), '背景2')
         self.background_cb.addItem(QIcon(logo_b3), '背景3')
 
-        self.btn_cutout = QPushButton('开始')
+        self.btn_cutout = QPushButton('开始抠图')
         self.btn_cutout.setFixedSize(250, 35)
 
         self.btn_record = QPushButton('开始录制')
         self.btn_record.setFixedSize(250, 35)
 
+        self.btn_photo = QPushButton('拍照')
+        self.btn_photo.setFixedSize(250, 35)
+
         self._layout_1 = QVBoxLayout()  # 布局1
         self._layout_1.addStretch(3)
         self._layout_1.addWidget(self.btn_record)
-        self._layout_1.addStretch(2)
+        self._layout_1.addStretch(1)
+        self._layout_1.addWidget(self.btn_photo)
+        self._layout_1.addStretch(1)
         self._layout_1.addWidget(self.btn_cutout)
         self._layout_1.addStretch(1)
         self._layout_1.addWidget(self.background_cb)
@@ -104,6 +112,7 @@ class ModePage(QWidget):
         self._layout_2 = QVBoxLayout() #布局2
         self._layout_2.addStretch(1)
         self._layout_2.addWidget(self.style_cb,0,QtCore.Qt.AlignCenter)
+        self._layout_2.addStretch(1)
         self._layout_2.addWidget(self.label_camera)
         self._layout_2.addWidget(self.label_counter)
         self._layout_2.addStretch(1)
@@ -133,13 +142,42 @@ class ModePage(QWidget):
         self.open_camera()
         # self.bgmModel_load()
         BGModel.reload(self)
-        matting_model.preload_init(self) 
+        matting_model.preload_init(self)
         self.timer_camera.timeout.connect(self.show_camera)  # 若定时器结束，则调用show_camera()
         self.btn_cutout.clicked.connect(self.btn_cutout_clicked)
         self.style_cb.currentIndexChanged.connect(self.switch_style)
         self.background_cb.currentIndexChanged.connect(self.switch_background)
 
         self.btn_record.clicked.connect(self.btn_record_clicked)
+        self.btn_photo.clicked.connect(self.btn_photo_clicked)
+
+    # 点击拍照
+    def btn_photo_clicked(self):
+        _path = os.getcwd()
+
+        self.buffer_photo_buffer = os.path.join(_path, "photo_buffer")
+        if not os.path.exists(self.buffer_photo_buffer):
+            os.mkdir(self.buffer_photo_buffer)
+        else:
+            shutil.rmtree(self.buffer_photo_buffer)
+            os.mkdir(self.buffer_photo_buffer)
+
+        _photo_ = "photocut.png"
+        _photo_preview = "preview.png"
+        self.photo_name = os.path.join(self.buffer_photo_buffer, _photo_)
+        self.photo_name2 = os.path.join(self.buffer_photo_buffer, _photo_preview)
+
+        photo_image = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
+
+        photo_image2 = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
+        photo_image2 = cv2.resize(photo_image2,(640,360))
+
+        if cv2.imwrite(self.photo_name,photo_image) and cv2.imwrite(self.photo_name2,photo_image2):
+            self.switch_PhotoPage.emit()
+        else:
+            print('false to photo')
+
+
 
     # 点击开始录制
     def btn_record_clicked(self):

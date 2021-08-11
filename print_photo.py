@@ -20,16 +20,16 @@ class MainWindow(QMainWindow):
     self.image = QImage()
     #自定义的多个函数，实现的功能不一
     self.createActions()
-    self.createMenus()
+    # self.createMenus() #父菜单
     self.createToolBars()
 
-    if self.image.load('./src/city.jpg'):
+    if self.image.load('./photo_buffer/preview.png'):
       self.imageLabel.setPixmap(QPixmap.fromImage(self.image))
       self.resize(self.image.width(),self.image.height())
 
   def createActions(self):
     #加载图标，添加快捷方式，添加提示信息，绑定槽函数
-    self.PrintAction=QAction(QIcon('./src/abs.png'),self.tr('打印'),self)
+    self.PrintAction=QAction(self.tr('打印'),self)
     self.PrintAction.setShortcut('Ctrl+P')
     self.PrintAction.setStatusTip(self.tr('打印'))
     self.PrintAction.triggered.connect(self.slotPrint)
@@ -46,22 +46,24 @@ class MainWindow(QMainWindow):
   def slotPrint(self):
     #实例化打印图像对象
     printer=QPrinter()
-    #打印窗口弹出
-    printDialog=QPrintDialog(printer,self)
-    if printDialog.exec_():
-      painter=QPainter(printer)
-      #实例化视图窗口
-      rect=painter.viewport()
-      #获取图片的尺寸
-      size=self.image.size()
+    # #打印窗口弹出
+    # printDialog=QPrintDialog(printer,self)
+    # if printDialog.exec_():
 
-      size.scale(rect.size(),Qt.KeepAspectRatio)
-      #设置视图窗口的属性
-      painter.setViewport(rect.x(),rect.y(),size.width(),size.height())
+    painter=QPainter(printer)
+    #实例化视图窗口
+    rect=painter.viewport()
+    #获取图片的尺寸
+    size=self.image.size()
 
-      #设置窗口的大小为图片的尺寸，并在窗口内绘制图片
-      painter.setWindow(self.image.rect)
-      painter.drawImage(0,0,self.image)
+    size.scale(rect.size(),Qt.KeepAspectRatio)
+    #设置视图窗口的属性
+    painter.setViewport(rect.x(),rect.y(),size.width(),size.height())
+
+    #设置窗口的大小为图片的尺寸，并在窗口内绘制图片
+    painter.setWindow(0,0,size.width(),size.height())
+    painter.drawImage(0,0,self.image)
+    painter.end()
 
 if __name__ == '__main__':
   app=QApplication(sys.argv)

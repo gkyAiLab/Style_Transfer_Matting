@@ -101,7 +101,7 @@ def video_encoder(video_path_name, video_out_name):
 
     return video_outpath
 
-def upload_video(video_path_name, fname):
+def upload(video_path_name, fname):
     """
     上传视频，视频的本地地址，所以就是上面函数给的视频帧生成的视频地址; 以及上传到云空间的视频名字
     """
@@ -141,7 +141,7 @@ def save_qrcode(qrcode_name, fname):
 
     return save_qrcode_path
 
-def Gnerate_qrcode(path):
+def Gnerate_video_qrcode(path):
     '''
     生成 二维码
     :param path: 视频帧保存的地址
@@ -167,19 +167,41 @@ def Gnerate_qrcode(path):
         video_path0 = video_encoder(video_path_name, video_out_name)
 
         # 上传视频
-        upload_video(video_path0, video_out_name)
+        upload(video_path0, video_out_name)
 
         # 生成二维码图片名称
         # qrcode_name = 'qrcode_out.png'
         qrcode_name='qrcode' + str(c) + '.png'
-        save_qrcode_path = save_qrcode(qrcode_name, video_out_name)
-        print(save_qrcode_path)
+        save_qrcode_video = save_qrcode(qrcode_name, video_out_name)
+        print(save_qrcode_video)
         # save_qrcode = []
         # save_qrcode = save_qrcode.append(save_qrcode_path)
 
-        return save_qrcode_path
+        return save_qrcode_video
     else:
         return False
+
+def Gnerate_picture_qrcode(path):
+
+    if filecheck(path) != 'nofile':
+    # 照片文件名
+        fname = 'photocut.png'
+        picture_path = os.path.join(path, fname)
+
+        a = int(time.time())
+        c = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime(a))
+        # 上传图片
+        picture_out_name = 'picture' + str(c) + '.png'
+        upload(picture_path, picture_out_name)
+
+        
+        qrcode_name='qrcode' + str(c) + '.png'
+        save_qrcode_picture = save_qrcode(qrcode_name, picture_out_name)
+        print(save_qrcode_picture)
+    else:
+        return False
+    return save_qrcode_picture
+
 
 def filecheck(path):
     filenum = len(os.listdir(path))  # 获得path目录下所有文件的数量
@@ -189,9 +211,11 @@ def filecheck(path):
 
 if __name__ == '__main__':
     # path = r'E:\video_picture\video'
-    path = r'E:\video_picture\video_frame'
+    # video_path1 = r'E:\video_picture\video_frame'
+    picture_path = r'E:\video_picture\picture'
     # path = r'E:\PycharmProjects\style-transfer\style-transfer-main\style_transfer_page\vidoe_buffer'
-    Gnerate_qrcode(path)
+    # Gnerate_video_qrcode(video_path1)
+    Gnerate_picture_qrcode(picture_path)
 
 
 

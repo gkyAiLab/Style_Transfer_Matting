@@ -11,7 +11,7 @@ class QrcodePage(QWidget):
         # qr_path_ = os.path.join(os.getcwd(),'qrcode')
         # self.qr_path = os.path.join(os.getcwd(),'qrcode.png')
         self.qr_path =path
-
+        print(self.photo_name)
         self.initUI()
 
     def initUI(self):
